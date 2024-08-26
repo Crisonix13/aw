@@ -1,105 +1,293 @@
 <?php
-require './class/class_user.php';
+require '../class/class_user.php';
 $classUser = new User;
 session_start();
 
-function handleRegistration($classUser) {
-    $firstName      = $_POST['firstName'];
-    $lastName       = $_POST['lastName'];
-    $email          = $_POST['email'];
-    $mobileNumber   = $_POST['mobileNumber'];
-    $password       = $_POST['password'];
-    $governmentID   = $_FILES['governmentID'];
-    $companyID      = $_FILES['companyID'];
+// Function to handle file upload and permit addition
+function handleAddPermit() {
+    $targetDir = "uploads/";
+    $targetFile = $targetDir . basename($_FILES["permitFile"]["name"]);
+    $uploadOk = 1;
+    $fileType = strtolower(pathinfo($targetFile, PATHINFO_EXTENSION));
 
-    if (empty($firstName) || empty($lastName) || empty($email) || empty($mobileNumber) || empty($password) || empty($governmentID['name']) || empty($companyID['name'])) {
-        echo "<script>alert('Please fill in all fields.');window.location.href='registration';</script>";
+    if ($fileType != "pdf") {
+        echo "Sorry, only PDF files are allowed.";
+        return;
+    }
+
+    if ($uploadOk && move_uploaded_file($_FILES["permitFile"]["tmp_name"], $targetFile)) {
+        $permit = [
+            'permitType' => $_POST['permitType'],
+            'permitNumber' => $_POST['permitNumber'],
+            'dateIssued' => $_POST['dateIssued'],
+            'expiryDate' => $_POST['expiryDate'],
+            'placeIssuance' => $_POST['placeIssuance'],
+            'permitFile' => $_FILES['permitFile']['name']
+        ];
+
+        $_SESSION['permits'] = $_SESSION['permits'] ?? [];
+        $_SESSION['permits'][] = $permit;
+
+        header("Location: application?step=2");
         exit();
-    }
-
-    $governmentIDDir = 'government_id/';
-    $companyIDDir = 'company_id/';
-
-    if (!is_dir($governmentIDDir)) {
-        mkdir($governmentIDDir, 0777, true);
-    }
-    if (!is_dir($companyIDDir)) {
-        mkdir($companyIDDir, 0777, true);
-    }
-
-    $governmentIDPath = $governmentIDDir . basename($governmentID['name']);
-    if (!move_uploaded_file($governmentID['tmp_name'], $governmentIDPath)) {
-        echo "<script>alert('Failed to upload government ID.');window.location.href='registration';</script>";
-        exit();
-    }
-
-    $companyIDPath = $companyIDDir . basename($companyID['name']);
-    if (!move_uploaded_file($companyID['tmp_name'], $companyIDPath)) {
-        echo "<script>alert('Failed to upload company ID.');window.location.href='registration';</script>";
-        exit();
-    }
-
-    $result = $classUser->register($firstName, $lastName, $email, $mobileNumber, $password, $governmentIDPath, $companyIDPath);
-
-    if ($result) {
-        $_SESSION['registration_success'] = true;
-        header("Location: thanks");
     } else {
-        echo "<script>alert('Registration failed. Please try again.');window.location.href='registration';</script>";
+        echo "Sorry, there was an error uploading your file.";
     }
 }
 
-function handleLogin($classUser) {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
+// Function to handle permit deletion
+function handleDeletePermit() {
+    $delete_key = $_POST['delete_key'];
 
-    if ($email && $password) {
-        $result = $classUser->login($email, $password);
+    if (isset($_SESSION['permits'][$delete_key])) {
+        $filename = $_SESSION['permits'][$delete_key]['permitFile'];
+        $filePath = "uploads/" . $filename;
 
-        if ($result) {
-            $_SESSION['user_logged_in'] = true;
-            $_SESSION['user'] = $email;
-            header("Location: index");
-        } else {
-            echo "<script>alert('Invalid login details. Please try again.');window.location.href='./login';</script>";
+        if (file_exists($filePath)) {
+            unlink($filePath);
         }
+
+        unset($_SESSION['permits'][$delete_key]);
+        $_SESSION['permits'] = array_values($_SESSION['permits']);
+    }
+
+    header("Location: application?step=2");
+    exit();
+}
+
+// Function to handle product addition
+function handleAddProduct() {
+    $productName = isset($_POST['productName']) ? htmlspecialchars($_POST['productName']) : '';
+
+    if (!empty($productName)) {
+        $_SESSION['products'] = $_SESSION['products'] ?? [];
+        $_SESSION['products'][] = ['productName' => $productName];
+
+        header("Location: application?step=3");
+        exit();
+    } else {
+        echo "Product name cannot be empty.";
     }
 }
 
-function handleAddClient($classUser) {
-    $clientName                 = $_POST['clientName'];
-    $clientAddress              = $_POST['clientAddress'];
-    $clientTypeEstablishment    = $_POST['clientTypeEstablishment'];
-    $clientContactPerson        = $_POST['clientContactPerson'];
-    $clientContactNumber        = $_POST['clientContactNumber'];
-    $clientEmail                = $_POST['clientEmail'];
-    $clientCRS                  = $_POST['clientCRS'];
-    $clientHW                   = $_POST['clientHW'];
+// Function to handle product deletion
+function handleDeleteProduct() {
+    $delete_key = $_POST['delete_key'];
 
-    $result = $classUser->addClient($clientName, $clientAddress, $clientTypeEstablishment, $clientContactPerson, $clientContactNumber, $clientEmail, $clientCRS, $clientHW);
+    if (isset($_SESSION['products'][$delete_key])) {
+        unset($_SESSION['products'][$delete_key]);
+        $_SESSION['products'] = array_values($_SESSION['products']);
+    }
 
-    if ($result) {
-        header("Location: client");
+    header("Location: application?step=3");
+    exit();
+}
+
+// Function to handle service addition
+function handleAddService() {
+    $serviceName = isset($_POST['serviceName']) ? htmlspecialchars($_POST['serviceName']) : '';
+
+    if (!empty($serviceName)) {
+        $_SESSION['services'] = $_SESSION['services'] ?? [];
+        $_SESSION['services'][] = ['serviceName' => $serviceName];
+
+        header("Location: application?step=3");
         exit();
     } else {
-        echo "<script>alert('An error occurred. Please try again.');window.location.href='./client';</script>";
+        echo "Service name cannot be empty.";
+    }
+}
+
+// Function to handle service deletion
+function handleDeleteService() {
+    $delete_key = $_POST['delete_key'];
+
+    if (isset($_SESSION['services'][$delete_key])) {
+        unset($_SESSION['services'][$delete_key]);
+        $_SESSION['services'] = array_values($_SESSION['services']);
+    }
+
+    header("Location: application?step=3");
+    exit();
+}
+
+// Function to handle hazardous waste profile addition
+function handleAddHWP() {
+    $wasteType = isset($_POST['wasteType']) ? htmlspecialchars($_POST['wasteType']) : '';
+    $wasteNature = isset($_POST['wasteNature']) ? htmlspecialchars($_POST['wasteNature']) : '';
+    $wasteCatalogue = isset($_POST['wasteCatalogue']) ? htmlspecialchars($_POST['wasteCatalogue']) : '';
+    $wasteDetails = isset($_POST['wasteDetails']) ? htmlspecialchars($_POST['wasteDetails']) : '';
+    $wastePractice = isset($_POST['wastePractice']) ? htmlspecialchars($_POST['wastePractice']) : '';
+
+    if (!empty($wasteType) && !empty($wasteNature) && !empty($wasteCatalogue)) {
+        $_SESSION['wasteProfiles'] = $_SESSION['wasteProfiles'] ?? [];
+        $_SESSION['wasteProfiles'][] = [
+            'wasteType' => $wasteType,
+            'wasteNature' => $wasteNature,
+            'wasteCatalogue' => $wasteCatalogue,
+            'wasteDetails' => $wasteDetails,
+            'wastePractice' => $wastePractice
+        ];
+
+        header("Location: application?step=4");
+        exit();
+    } else {
+        echo "Waste inputs cannot be empty.";
+    }
+}
+
+// Function to handle hazardous waste profile deletion
+function handleDeleteWasteProfile() {
+    $delete_key = $_POST['delete_key'];
+
+    if (isset($_SESSION['wasteProfiles'][$delete_key])) {
+        unset($_SESSION['wasteProfiles'][$delete_key]);
+        $_SESSION['wasteProfiles'] = array_values($_SESSION['wasteProfiles']);
+    }
+
+    header("Location: application?step=4");
+    exit();
+}
+
+// Function to handle file upload
+function handleAddFile() {
+    // Directories for file uploads
+    $targetDir = "uploads/";
+    
+    // Get file data
+    $fileType = isset($_POST['fileType']) ? htmlspecialchars($_POST['fileType']) : '';
+    $fileName = basename($_FILES['fileName']['name']);
+    $fileTmpName = $_FILES['fileName']['tmp_name'];
+    $fileSize = $_FILES['fileName']['size'];
+    
+    // Validate file input
+    if (empty($fileType) || empty($fileName)) {
+        echo "File type and file name are required.";
+        return;
+    }
+
+    // Set target file path
+    $targetFile = $targetDir . $fileName;
+    
+    // Move uploaded file to the target directory
+    if (move_uploaded_file($fileTmpName, $targetFile)) {
+        // Add file info to the session
+        $_SESSION['files'] = $_SESSION['files'] ?? [];
+        $_SESSION['files'][] = [
+            'fileName' => $fileName,
+            'fileSize' => round($fileSize / 1024, 2) . " KB",
+            'fileType' => $fileType
+        ];
+
+        header("Location: application?step=5");
+        exit();
+    } else {
+        echo "Sorry, there was an error uploading your file.";
+    }
+}
+
+// Function to handle file deletion
+function handleDeleteFile() {
+    $delete_key = $_POST['delete_key'];
+
+    if (isset($_SESSION['files'][$delete_key])) {
+        // Remove file from server
+        $filename = $_SESSION['files'][$delete_key]['fileName'];
+        $filePath = "uploads/" . $filename;
+
+        if (file_exists($filePath)) {
+            unlink($filePath);
+        }
+
+        // Remove file from session
+        unset($_SESSION['files'][$delete_key]);
+        $_SESSION['files'] = array_values($_SESSION['files']);
+    }
+
+    header("Location: application?step=5");
+    exit();
+}
+
+function submitApplication($classUser){
+    // General Information
+    $clientID = isset($_POST['clientID']) ? htmlspecialchars($_POST['clientID']) : '';
+    $managingHead = isset($_POST['managingHead']) ? htmlspecialchars($_POST['managingHead']) : '';
+    $managingHeadMobNum = isset($_POST['managingHeadMobNum']) ? htmlspecialchars($_POST['managingHeadMobNum']) : '';
+    $managingHeadTelNum = isset($_POST['managingHeadTelNum']) ? htmlspecialchars($_POST['managingHeadTelNum']) : '';
+    $natureBusiness = isset($_POST['natureBusiness']) ? htmlspecialchars($_POST['natureBusiness']) : '';
+    $psicNum = isset($_POST['psicNum']) ? htmlspecialchars($_POST['psicNum']) : '';
+    $psicDesc = isset($_POST['psicDesc']) ? htmlspecialchars($_POST['psicDesc']) : '';
+    $dateEstablishment = isset($_POST['dateEstablishment']) ? htmlspecialchars($_POST['dateEstablishment']) : '';
+    $numEmployees = isset($_POST['numEmployees']) ? htmlspecialchars($_POST['numEmployees']) : '';
+    
+    // Pollution Control Officer Information
+    $pcoName = isset($_POST['pcoName']) ? htmlspecialchars($_POST['pcoName']) : '';
+    $pcoMobNum = isset($_POST['pcoMobNum']) ? htmlspecialchars($_POST['pcoMobNum']) : '';
+    $pcoTelNum = isset($_POST['pcoTelNum']) ? htmlspecialchars($_POST['pcoTelNum']) : '';
+    $pcoEmail = isset($_POST['pcoEmail']) ? htmlspecialchars($_POST['pcoEmail']) : '';
+    $pcoAccredNo = isset($_POST['pcoAccredNo']) ? htmlspecialchars($_POST['pcoAccredNo']) : '';
+    $pcoAccredDate = isset($_POST['pcoAccredDate']) ? htmlspecialchars($_POST['pcoAccredDate']) : '';
+    
+    // Facility Address
+    $region = isset($_POST['region']) ? htmlspecialchars($_POST['region']) : '';
+    $province = isset($_POST['province']) ? htmlspecialchars($_POST['province']) : '';
+    $city = isset($_POST['city']) ? htmlspecialchars($_POST['city']) : '';
+    $barangay = isset($_POST['barangay']) ? htmlspecialchars($_POST['barangay']) : '';
+    $zipCode = isset($_POST['zipCode']) ? htmlspecialchars($_POST['zipCode']) : '';
+    
+    // Geolocation
+    $latitude = isset($_POST['latitude']) ? htmlspecialchars($_POST['latitude']) : '';
+    $longitude = isset($_POST['longitude']) ? htmlspecialchars($_POST['longitude']) : '';
+
+    $result = $classUser->submitApplication($clientID, $managingHead, $managingHeadMobNum, $managingHeadTelNum, $natureBusiness, $psicNum, $psicDesc, $dateEstablishment, $numEmployees, 
+                                            $pcoName, $pcoMobNum, $pcoTelNum, $pcoEmail, $pcoAccredNo, $pcoAccredDate,
+                                            $region, $province, $city, $barangay, $zipCode,
+                                            $latitude, $longitude);
+
+    if ($result){
+        header("Location: application");
+        exit();
     }
 }
 
 // Main switch statement
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     switch (true) {
-        case isset($_POST['register']):
-            handleRegistration($classUser);
+        case isset($_POST['addPermit']):
+            handleAddPermit();
             break;
-        case isset($_POST['login']):
-            handleLogin($classUser);
+        case isset($_POST['delete_permit']):
+            handleDeletePermit();
             break;
-        case isset($_POST['addClient']):
-            handleAddClient($classUser);
+        case isset($_POST['addProduct']):
+            handleAddProduct();
+            break;
+        case isset($_POST['delete_product']):
+            handleDeleteProduct();
+            break;
+        case isset($_POST['addService']):
+            handleAddService();
+            break;
+        case isset($_POST['delete_service']):
+            handleDeleteService();
+            break;
+        case isset($_POST['addHWP']):
+            handleAddHWP();
+            break;
+        case isset($_POST['delete_wasteProfile']):
+            handleDeleteWasteProfile();
+            break;
+        case isset($_POST['addFile']):
+            handleAddFile();
+            break;
+        case isset($_POST['delete_file']):
+            handleDeleteFile();
+            break;
+        case isset($_POST['finalizeApplication']):
+            submitApplication($classUser);
             break;
         default:
-            echo "<script>alert('Invalid action.');window.location.href='index';</script>";
+            echo "Invalid action.";
             break;
     }
 }
